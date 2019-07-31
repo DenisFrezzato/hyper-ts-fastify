@@ -1,0 +1,16 @@
+{
+  "extends": [
+    "tslint:recommended",
+    "tslint-config-standard",
+    "tslint-config-prettier",
+    "typestrict"
+  ],
+  "rules": {
+    "interface-name": false,
+    "object-literal-sort-keys": false,
+    "curly": [true, "ignore-same-line"],
+    "member-ordering": false,
+    "no-floating-promises": false,
+    "array-type": [true, "generic"]
+  }
+}
