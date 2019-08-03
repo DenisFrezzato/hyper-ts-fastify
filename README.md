@@ -1,4 +1,4 @@
-A https://github.com/fastify/fastify adapter for https://github.com/gcanti/hyper-ts.
+An adapter which let you use https://github.com/gcanti/hyper-ts with https://github.com/fastify/fastify.
 
 Please refer to hyper-ts's documentation for its usage.
 
