@@ -1,6 +1,6 @@
 {
   "name": "hyper-ts-fastify",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "hyper-ts adapter for fastify.",
   "files": [
     "dist"
@@ -28,8 +28,8 @@
     "@types/qs": "^6.5.3",
     "fastify": "^2.7.0",
     "fastify-cookie": "^3.0.2",
-    "fp-ts": "^1.19.5",
-    "hyper-ts": "0.4.0",
+    "fp-ts": "^2.0.5",
+    "hyper-ts": "^0.5.0",
     "io-ts": "^2.0.0",
     "jest": "^24.8.0",
     "mocha": "^6.2.0",
@@ -46,8 +46,8 @@
   "peerDependencies": {
     "fastify": "^2.7.0",
     "fastify-cookie": "^3.0.2",
-    "fp-ts": "^1.19.5",
-    "hyper-ts": "0.4.0"
+    "fp-ts": "^2.0.5",
+    "hyper-ts": "^0.5.0"
   },
   "tags": [
     "typescript",
