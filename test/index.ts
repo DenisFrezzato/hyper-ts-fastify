@@ -1,11 +1,12 @@
 import * as assert from 'assert'
+import * as L from 'fp-ts-contrib/lib/List'
 import * as E from 'fp-ts/lib/Either'
 import { pipe } from 'fp-ts/lib/pipeable'
 import * as H from 'hyper-ts'
 import * as t from 'io-ts'
 import { failure } from 'io-ts/lib/PathReporter'
 import * as querystring from 'qs'
-import { Action, FastifyConnection, toArray } from '../src'
+import { Action, FastifyConnection } from '../src'
 
 class MockRequest {
   constructor(
@@ -41,7 +42,7 @@ function assertSuccess<I, O, A>(
       pipe(
         e,
         // tslint:disable-next-line:no-shadowed-variable
-        E.map(([a, cout]) => [a, toArray((cout as MockConnection<O>).actions)]),
+        E.map(([a, cout]) => [a, L.toReversedArray((cout as MockConnection<O>).actions)]),
       ),
       E.right([a, actions]),
     )

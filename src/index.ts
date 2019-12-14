@@ -1,4 +1,5 @@
 import * as fastify from 'fastify'
+import * as LL from 'fp-ts-contrib/lib/List'
 import * as C from 'fp-ts/lib/Console'
 import { fold } from 'fp-ts/lib/Either'
 import { constVoid } from 'fp-ts/lib/function'
@@ -6,32 +7,6 @@ import { pipe } from 'fp-ts/lib/pipeable'
 import * as TE from 'fp-ts/lib/TaskEither'
 import { IncomingMessage, ServerResponse } from 'http'
 import * as H from 'hyper-ts'
-
-export type LinkedList<A> =
-  | { type: 'Nil'; length: number }
-  | { type: 'Cons'; head: A; tail: LinkedList<A>; length: number }
-
-export const nil: LinkedList<never> = { type: 'Nil', length: 0 }
-
-export const cons = <A>(head: A, tail: LinkedList<A>): LinkedList<A> => ({
-  type: 'Cons',
-  head,
-  tail,
-  length: tail.length + 1,
-})
-
-export const toArray = <A>(list: LinkedList<A>): Array<A> => {
-  const len = list.length
-  const r: Array<A> = new Array(len)
-  let l: LinkedList<A> = list
-  let i = 1
-  while (l.type !== 'Nil') {
-    r[len - i] = l.head
-    i++
-    l = l.tail
-  }
-  return r
-}
 
 export type Action =
   | { type: 'setBody'; body: unknown }
@@ -51,11 +26,11 @@ export class FastifyConnection<S> implements H.Connection<S> {
   constructor(
     readonly req: fastify.FastifyRequest<IncomingMessage>,
     readonly reply: fastify.FastifyReply<ServerResponse>,
-    readonly actions: LinkedList<Action> = nil,
+    readonly actions: LL.List<Action> = LL.nil,
     readonly ended: boolean = false,
   ) {}
   public chain<T>(action: Action, ended: boolean = false): FastifyConnection<T> {
-    return new FastifyConnection<T>(this.req, this.reply, cons(action, this.actions), ended)
+    return new FastifyConnection<T>(this.req, this.reply, LL.cons(action, this.actions), ended)
   }
   public getRequest(): IncomingMessage {
     return this.req.raw
@@ -155,7 +130,7 @@ const exec = <I, O, L>(
       fold(constVoid, c => {
         const { actions: list, reply } = c as FastifyConnection<O>
         const len = list.length
-        const actions = toArray(list)
+        const actions = LL.toReversedArray(list)
         for (let i = 0; i < len; i++) {
           run(reply, actions[i])
         }
