@@ -1,6 +1,6 @@
 {
   "name": "hyper-ts-fastify",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "hyper-ts adapter for fastify.",
   "files": [
     "dist"
