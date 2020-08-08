@@ -1,6 +1,6 @@
 import { fastify } from 'fastify'
 import 'fastify-cookie'
-import { pipe } from 'fp-ts/lib/pipeable'
+import { pipe } from 'fp-ts/function'
 import * as H from 'hyper-ts'
 import { NonEmptyString } from 'io-ts-types/lib/NonEmptyString'
 

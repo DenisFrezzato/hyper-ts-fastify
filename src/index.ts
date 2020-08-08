@@ -1,10 +1,10 @@
-import * as fastify from 'fastify'
+import * as F from 'fastify'
 import * as LL from 'fp-ts-contrib/lib/List'
-import * as C from 'fp-ts/lib/Console'
-import { fold } from 'fp-ts/lib/Either'
-import { constVoid } from 'fp-ts/lib/function'
-import { pipe } from 'fp-ts/lib/pipeable'
-import * as TE from 'fp-ts/lib/TaskEither'
+import * as C from 'fp-ts/Console'
+import { fold } from 'fp-ts/Either'
+import { constVoid } from 'fp-ts/function'
+import { pipe } from 'fp-ts/function'
+import * as TE from 'fp-ts/TaskEither'
 import { IncomingMessage } from 'http'
 import * as H from 'hyper-ts'
 
@@ -24,8 +24,8 @@ const missingCookiePluginWarn = () =>
 export class FastifyConnection<S> implements H.Connection<S> {
   public readonly _S!: S
   constructor(
-    readonly req: fastify.FastifyRequest,
-    readonly reply: fastify.FastifyReply,
+    readonly req: F.FastifyRequest,
+    readonly reply: F.FastifyReply,
     readonly actions: LL.List<Action> = LL.nil,
     readonly ended: boolean = false,
   ) {}
@@ -81,7 +81,7 @@ export class FastifyConnection<S> implements H.Connection<S> {
   }
 }
 
-const run = (reply: fastify.FastifyReply, action: Action): fastify.FastifyReply => {
+const run = (reply: F.FastifyReply, action: Action): F.FastifyReply => {
   switch (action.type) {
     case 'clearCookie':
       // tslint:disable-next-line strict-boolean-expressions
@@ -118,8 +118,8 @@ const run = (reply: fastify.FastifyReply, action: Action): fastify.FastifyReply 
 
 const exec = <I, O, L>(
   middleware: H.Middleware<I, O, L, void>,
-  req: fastify.FastifyRequest,
-  res: fastify.FastifyReply,
+  req: F.FastifyRequest,
+  res: F.FastifyReply,
 ): Promise<void> =>
   H.execMiddleware(middleware, new FastifyConnection<I>(req, res))().then((e) =>
     pipe(
@@ -135,16 +135,14 @@ const exec = <I, O, L>(
     ),
   )
 
-export function toRequestHandler<I, O, L>(
-  middleware: H.Middleware<I, O, L, void>,
-): fastify.RouteHandler {
+export function toRequestHandler<I, O, L>(middleware: H.Middleware<I, O, L, void>): F.RouteHandler {
   return (req, res) => exec(middleware, req, res)
 }
 
-export function fromRequestHandler(fastifyInstance: fastify.FastifyInstance) {
+export function fromRequestHandler(fastifyInstance: F.FastifyInstance) {
   return <I = H.StatusOpen, E = never, A = never>(
-    requestHandler: fastify.RouteHandler,
-    f: (req: fastify.FastifyRequest) => A,
+    requestHandler: F.RouteHandler,
+    f: (req: F.FastifyRequest) => A,
   ): H.Middleware<I, I, E, A> => {
     return (c) =>
       TE.rightTask(() => {
