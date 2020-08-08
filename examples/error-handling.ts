@@ -1,6 +1,6 @@
-import * as fastify from 'fastify'
+import { fastify } from 'fastify'
 import 'fastify-cookie'
-import { pipe } from 'fp-ts/lib/pipeable'
+import { pipe } from 'fp-ts/function'
 import * as H from 'hyper-ts'
 import { NonEmptyString } from 'io-ts-types/lib/NonEmptyString'
 
@@ -81,7 +81,7 @@ function serverError<E = never>(
   message: string,
 ): H.Middleware<H.StatusOpen, H.ResponseEnded, E, void> {
   return pipe(
-    H.status(H.Status.ServerError),
+    H.status(H.Status.InternalServerError),
     H.ichain(() => H.closeHeaders()),
     H.ichain(() => H.send(message)),
   )
@@ -102,10 +102,7 @@ function sendError(err: UserError): H.Middleware<H.StatusOpen, H.ResponseEnded, 
 // route
 //
 
-const getUserHandler = pipe(
-  getUser,
-  H.orElse(sendError),
-)
+const getUserHandler = pipe(getUser, H.orElse(sendError))
 
 fastify()
   .get('/:user_id', toRequestHandler(getUserHandler))
