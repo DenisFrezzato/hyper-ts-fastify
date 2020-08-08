@@ -1,4 +1,4 @@
-import * as fastify from 'fastify'
+import { fastify } from 'fastify'
 import 'fastify-cookie'
 import { pipe } from 'fp-ts/lib/pipeable'
 import * as H from 'hyper-ts'

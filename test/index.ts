@@ -9,15 +9,16 @@ import * as querystring from 'qs'
 import { Action, FastifyConnection } from '../src'
 
 class MockRequest {
+  query: querystring.ParsedQs
   constructor(
     readonly params?: unknown,
-    readonly query: string = '',
+    readonly rawQuery: string = '',
     readonly body?: unknown,
     readonly headers: Record<string, string> = {},
     readonly originalUrl: string = '',
     readonly method: string = 'GET',
   ) {
-    this.query = querystring.parse(query)
+    this.query = querystring.parse(rawQuery)
   }
   public header(name: string) {
     return this.headers[name]
@@ -37,7 +38,7 @@ function assertSuccess<I, O, A>(
   a: A,
   actions: Array<Action>,
 ) {
-  return m(cin)().then(e => {
+  return m(cin)().then((e) => {
     assert.deepStrictEqual(
       pipe(
         e,
@@ -54,7 +55,7 @@ function assertFailure<I, L>(
   conn: MockConnection<I>,
   f: (l: L) => void,
 ) {
-  return m(conn)().then(e => {
+  return m(conn)().then((e) => {
     if (E.isLeft(e)) {
       f(e.left)
     } else {
@@ -72,10 +73,7 @@ describe('Middleware', () => {
       H.header('b', 'b'),
       H.map(() => 'foo'),
     )
-    const m = pipe(
-      fab,
-      H.ap(fa),
-    )
+    const m = pipe(fab, H.ap(fa))
     const c = new MockConnection<H.HeadersOpen>(new MockRequest())
     return assertSuccess(m, c, 3, [
       { type: 'setHeader', name: 'a', value: 'a' },
@@ -173,7 +171,7 @@ describe('Middleware', () => {
     it('should validate a param (failure case)', () => {
       const m = H.decodeParam('foo', t.number.decode)
       const c = new MockConnection<H.StatusOpen>(new MockRequest({ foo: 'a' }))
-      return assertFailure(m, c, errors => {
+      return assertFailure(m, c, (errors) => {
         assert.deepStrictEqual(failure(errors), ['Invalid value "a" supplied to : number'])
       })
     })
@@ -188,7 +186,7 @@ describe('Middleware', () => {
       it('should validate all params (failure case)', () => {
         const m = H.decodeParams(t.interface({ foo: t.number }).decode)
         const c = new MockConnection<H.StatusOpen>(new MockRequest({ foo: 'a' }))
-        return assertFailure(m, c, errors => {
+        return assertFailure(m, c, (errors) => {
           assert.deepStrictEqual(failure(errors), [
             'Invalid value "a" supplied to : { foo: number }/foo: number',
           ])
@@ -228,7 +226,7 @@ describe('Middleware', () => {
       })
       const m = H.decodeQuery(Query.decode)
       const c = new MockConnection<H.StatusOpen>(new MockRequest({}, 'q=tobi+ferret'))
-      return assertFailure(m, c, errors => {
+      return assertFailure(m, c, (errors) => {
         assert.deepStrictEqual(failure(errors), [
           'Invalid value "tobi ferret" supplied to : { q: number }/q: number',
         ])
@@ -246,7 +244,7 @@ describe('Middleware', () => {
     it('should validate the body (failure case)', () => {
       const m = H.decodeBody(t.number.decode)
       const c = new MockConnection<H.StatusOpen>(new MockRequest({}, undefined, 'a'))
-      return assertFailure(m, c, errors => {
+      return assertFailure(m, c, (errors) => {
         assert.deepStrictEqual(failure(errors), ['Invalid value "a" supplied to : number'])
       })
     })
@@ -264,7 +262,7 @@ describe('Middleware', () => {
     it('should validate a header (failure case)', () => {
       const m = H.decodeHeader('token', t.string.decode)
       const c = new MockConnection<H.StatusOpen>(new MockRequest({}, undefined, undefined, {}))
-      return assertFailure(m, c, errors => {
+      return assertFailure(m, c, (errors) => {
         assert.deepStrictEqual(failure(errors), ['Invalid value undefined supplied to : string'])
       })
     })
