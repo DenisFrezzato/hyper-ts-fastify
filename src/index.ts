@@ -1,12 +1,10 @@
 import * as F from 'fastify'
 import * as LL from 'fp-ts-contrib/lib/List'
 import * as C from 'fp-ts/Console'
-import { fold } from 'fp-ts/Either'
-import { constVoid } from 'fp-ts/function'
-import { pipe } from 'fp-ts/function'
-import * as TE from 'fp-ts/TaskEither'
+import * as E from 'fp-ts/Either'
 import { IncomingMessage } from 'http'
 import * as H from 'hyper-ts'
+import { pipe, flow } from 'fp-ts/function'
 
 export type Action =
   | { type: 'setBody'; body: unknown }
@@ -96,8 +94,7 @@ const run = (reply: F.FastifyReply, action: Action): F.FastifyReply => {
         return reply
       }
     case 'endResponse':
-      reply.sent = true
-      return reply
+      return reply.send()
     case 'setBody':
       return reply.send(action.body)
     case 'setCookie':
@@ -109,48 +106,53 @@ const run = (reply: F.FastifyReply, action: Action): F.FastifyReply => {
         return reply
       }
     case 'setHeader':
-      reply.header(action.name, action.value)
-      return reply
+      return reply.header(action.name, action.value)
     case 'setStatus':
       return reply.status(action.status)
   }
 }
 
-const exec = <I, O, L>(
-  middleware: H.Middleware<I, O, L, void>,
-  req: F.FastifyRequest,
-  res: F.FastifyReply,
+const exec = <I, O, L>(middleware: H.Middleware<I, O, L, void>): F.RouteHandler => (
+  req,
+  reply,
 ): Promise<void> =>
-  H.execMiddleware(middleware, new FastifyConnection<I>(req, res))().then((e) =>
-    pipe(
-      e,
-      fold(constVoid, (c) => {
+  H.execMiddleware(middleware, new FastifyConnection<I>(req, reply, LL.nil, reply.sent))().then(
+    E.fold(
+      () => {
+        reply.status(500).send()
+      },
+      (c) => {
         const { actions: list, reply } = c as FastifyConnection<O>
         const len = list.length
         const actions = LL.toReversedArray(list)
         for (let i = 0; i < len; i++) {
           run(reply, actions[i])
         }
-      }),
+      },
     ),
   )
 
-export function toRequestHandler<I, O, L>(middleware: H.Middleware<I, O, L, void>): F.RouteHandler {
-  return (req, res) => exec(middleware, req, res)
-}
+export const toRequestHandler = <I, O, L>(
+  middleware: H.Middleware<I, O, L, void>,
+): F.RouteHandler => exec(middleware)
 
-export function fromRequestHandler(fastifyInstance: F.FastifyInstance) {
-  return <I = H.StatusOpen, E = never, A = never>(
-    requestHandler: F.RouteHandler,
-    f: (req: F.FastifyRequest) => A,
-  ): H.Middleware<I, I, E, A> => {
-    return (c) =>
-      TE.rightTask(() => {
-        const { req, reply: res } = c as FastifyConnection<I>
-        return Promise.resolve(requestHandler.call(fastifyInstance, req, res)).then(() => [
-          f(req),
-          c,
-        ])
-      })
-  }
+export const fromRequestHandler = (fastifyInstance: F.FastifyInstance) => <
+  I = H.StatusOpen,
+  E = never,
+  A = never
+>(
+  requestHandler: F.RouteHandler,
+  f: (req: F.FastifyRequest) => E.Either<E, A>,
+  onError: (reason: unknown) => E,
+): H.Middleware<I, I, E, A> => (c) => () => {
+  const { req, reply: res } = c as FastifyConnection<I>
+  return Promise.resolve(requestHandler.call(fastifyInstance, req, res))
+    .then(() =>
+      pipe(
+        req,
+        f,
+        E.map((a): [A, H.Connection<I>] => [a, c]),
+      ),
+    )
+    .catch(flow(onError, E.left))
 }

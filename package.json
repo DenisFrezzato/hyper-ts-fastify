@@ -1,6 +1,6 @@
 {
   "name": "hyper-ts-fastify",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "hyper-ts adapter for fastify.",
   "files": [
     "dist"
@@ -14,7 +14,7 @@
   "scripts": {
     "test": "jest",
     "lint": "tslint -p . src/**/*.ts test/**/*.ts",
-    "build": "tsc"
+    "build": "tsc -p tsconfig.build.json"
   },
   "author": "Denis Frezzato <denis.frezzato@tutanota.com>",
   "license": "MIT",
