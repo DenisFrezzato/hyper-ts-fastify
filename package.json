@@ -14,7 +14,7 @@
   "scripts": {
     "test": "jest",
     "lint": "tslint -p . src/**/*.ts test/**/*.ts",
-    "build": "tsc"
+    "build": "tsc -p tsconfig.build.json"
   },
   "author": "Denis Frezzato <denis.frezzato@tutanota.com>",
   "license": "MIT",

@@ -6,6 +6,7 @@
     "declaration": true
   },
   "include": [
-    "./src"
+    "./src",
+    "./node_modules/fastify-cookie/plugin.d.ts"
   ]
 }
