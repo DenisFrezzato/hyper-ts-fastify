@@ -1,270 +1,378 @@
 import * as assert from 'assert'
-import * as L from 'fp-ts-contrib/lib/List'
 import * as E from 'fp-ts/Either'
 import { pipe } from 'fp-ts/function'
 import * as H from 'hyper-ts'
 import * as t from 'io-ts'
 import { failure } from 'io-ts/lib/PathReporter'
-import * as querystring from 'qs'
-import { Action, FastifyConnection } from '../src'
+import { toRequestHandler } from '../src'
+import fastify from 'fastify'
 
-class MockRequest {
-  query: querystring.ParsedQs
-  constructor(
-    readonly params?: unknown,
-    readonly rawQuery: string = '',
-    readonly body?: unknown,
-    readonly headers: Record<string, string> = {},
-    readonly originalUrl: string = '',
-    readonly method: string = 'GET',
-  ) {
-    this.query = querystring.parse(rawQuery)
-  }
-  public header(name: string) {
-    return this.headers[name]
-  }
-}
+describe('FastifyConnection', () => {
+  describe('setStatus', () => {
+    it('should write the status code', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.status(H.Status.OK),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
 
-// tslint:disable-next-line:max-classes-per-file
-class MockConnection<S> extends FastifyConnection<S> {
-  constructor(req: MockRequest) {
-    super(req as any, null as any)
-  }
-}
-
-function assertSuccess<I, O, A>(
-  m: H.Middleware<I, O, any, A>,
-  cin: MockConnection<I>,
-  a: A,
-  actions: Array<Action>,
-) {
-  return m(cin)().then((e) => {
-    assert.deepStrictEqual(
-      pipe(
-        e,
-        // tslint:disable-next-line:no-shadowed-variable
-        E.map(([a, cout]) => [a, L.toReversedArray((cout as MockConnection<O>).actions)]),
-      ),
-      E.right([a, actions]),
-    )
-  })
-}
-
-function assertFailure<I, L>(
-  m: H.Middleware<I, any, L, any>,
-  conn: MockConnection<I>,
-  f: (l: L) => void,
-) {
-  return m(conn)().then((e) => {
-    if (E.isLeft(e)) {
-      f(e.left)
-    } else {
-      assert.fail('not a left')
-    }
-  })
-}
-describe('Middleware', () => {
-  it('ap', () => {
-    const fab = pipe(
-      H.header('a', 'a'),
-      H.map(() => (s: string): number => s.length),
-    )
-    const fa = pipe(
-      H.header('b', 'b'),
-      H.map(() => 'foo'),
-    )
-    const m = pipe(fab, H.ap(fa))
-    const c = new MockConnection<H.HeadersOpen>(new MockRequest())
-    return assertSuccess(m, c, 3, [
-      { type: 'setHeader', name: 'a', value: 'a' },
-      { type: 'setHeader', name: 'b', value: 'b' },
-    ])
-  })
-
-  describe('status', () => {
-    it('should write the status code', () => {
-      const m = H.status(200)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [{ type: 'setStatus', status: 200 }])
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.statusCode, 200)
     })
   })
 
   describe('header', () => {
-    it('should write the headers', () => {
-      const m = H.header('name', 'value')
-      const c = new MockConnection<H.HeadersOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [{ type: 'setHeader', name: 'name', value: 'value' }])
+    it('should write the headers', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.status(H.Status.OK),
+        H.ichain(() => H.header('name', 'value')),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
+
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.headers['name'], 'value')
     })
   })
 
   describe('send', () => {
-    it('should send the content', () => {
-      const m = H.send('<h1>Hello world!</h1>')
-      const c = new MockConnection<H.BodyOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [{ type: 'setBody', body: '<h1>Hello world!</h1>' }])
+    it('should send the content', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.status(H.Status.OK),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.send('This is the content')),
+      )
+      server.get('/', toRequestHandler(m))
+
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.body, 'This is the content')
     })
   })
 
   describe('json', () => {
-    it('should add the proper header and send the content', () => {
-      const m = H.json({ a: 1 }, E.toError)
-      const c = new MockConnection<H.HeadersOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [
-        { type: 'setHeader', name: 'Content-Type', value: 'application/json' },
-        { type: 'setBody', body: `{"a":1}` },
-      ])
-    })
-  })
-
-  describe('cookie', () => {
-    it('should add the cookie', () => {
-      const m = H.cookie('name', 'value', {})
-      const c = new MockConnection<H.HeadersOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [
-        { type: 'setCookie', name: 'name', value: 'value', options: {} },
-      ])
-    })
-  })
-
-  describe('clearCookie', () => {
-    it('should clear the cookie', () => {
+    it('should add the proper header and send the content', async () => {
+      const server = fastify()
       const m = pipe(
-        H.cookie('name', 'value', {}),
-        H.ichain(() => H.clearCookie('name', {})),
+        H.status(H.Status.OK),
+        H.ichain(() => H.json({ a: 1 }, E.toError)),
       )
-      const c = new MockConnection<H.HeadersOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [
-        { type: 'setCookie', name: 'name', value: 'value', options: {} },
-        { type: 'clearCookie', name: 'name', options: {} },
-      ])
+      server.get('/', toRequestHandler(m))
+
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.body, '{"a":1}')
+      assert.strictEqual(res.headers['content-type'], 'application/json; charset=utf-8')
     })
   })
 
   describe('contentType', () => {
-    it('should add the `Content-Type` header', () => {
-      const m = H.contentType(H.MediaType.applicationXML)
-      const c = new MockConnection<H.HeadersOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [
-        { type: 'setHeader', name: 'Content-Type', value: 'application/xml' },
-      ])
+    it('should add the `Content-Type` header', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.status(H.Status.OK),
+        H.ichain(() => H.contentType(H.MediaType.applicationXML)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
+
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.headers['content-type'], 'application/xml')
     })
   })
 
   describe('redirect', () => {
-    it('should add the correct status / header', () => {
-      const m = H.redirect('/users')
-      const c = new MockConnection<H.StatusOpen>(new MockRequest())
-      return assertSuccess(m, c, undefined, [
-        { type: 'setStatus', status: 302 },
-        { type: 'setHeader', name: 'Location', value: '/users' },
-      ])
-    })
-  })
+    it('should add the correct status / header', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.redirect('/users'),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
 
-  describe('decodeParam', () => {
-    it('should validate a param (success case)', () => {
-      const m = H.decodeParam('foo', t.number.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({ foo: 1 }))
-      return assertSuccess(m, c, 1, [])
-    })
-
-    it('should validate a param (failure case)', () => {
-      const m = H.decodeParam('foo', t.number.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({ foo: 'a' }))
-      return assertFailure(m, c, (errors) => {
-        assert.deepStrictEqual(failure(errors), ['Invalid value "a" supplied to : number'])
-      })
-    })
-
-    describe('decodeParams', () => {
-      it('should validate all params (success case)', () => {
-        const m = H.decodeParams(t.interface({ foo: t.number }).decode)
-        const c = new MockConnection<H.StatusOpen>(new MockRequest({ foo: 1 }))
-        return assertSuccess(m, c, { foo: 1 }, [])
-      })
-
-      it('should validate all params (failure case)', () => {
-        const m = H.decodeParams(t.interface({ foo: t.number }).decode)
-        const c = new MockConnection<H.StatusOpen>(new MockRequest({ foo: 'a' }))
-        return assertFailure(m, c, (errors) => {
-          assert.deepStrictEqual(failure(errors), [
-            'Invalid value "a" supplied to : { foo: number }/foo: number',
-          ])
-        })
-      })
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.statusCode, 302)
+      assert.strictEqual(res.headers['location'], '/users')
     })
   })
 
   describe('decodeQuery', () => {
     it('should validate a query (success case 1)', () => {
-      const Query = t.interface({
-        q: t.string,
-      })
-      const m = H.decodeQuery(Query.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({}, 'q=tobi+ferret'))
-      return assertSuccess(m, c, { q: 'tobi ferret' }, [])
+      const Query = t.type({ q: t.string })
+      const server = fastify()
+      const m = pipe(
+        H.decodeQuery(Query.decode),
+        H.chain((query) => H.rightIO(() => assert.deepStrictEqual(query, { q: 'tobi ferret' }))),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
+
+      return server.inject({ path: '/?q=tobi+ferret' })
     })
 
     it('should validate a query (success case 2)', () => {
-      const Query = t.interface({
+      const Query = t.type({
         order: t.string,
-        shoe: t.interface({
-          color: t.string,
-          type: t.string,
-        }),
+        shoe: t.type({ color: t.string, type: t.string }),
       })
-      const m = H.decodeQuery(Query.decode)
-      const c = new MockConnection<H.StatusOpen>(
-        new MockRequest({}, 'order=desc&shoe[color]=blue&shoe[type]=converse'),
+      const server = fastify()
+      const m = pipe(
+        H.decodeQuery(Query.decode),
+        H.chain((query) =>
+          H.rightIO(() =>
+            assert.deepStrictEqual(query, {
+              order: 'desc',
+              shoe: { color: 'blue', type: 'converse' },
+            }),
+          ),
+        ),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
       )
-      return assertSuccess(m, c, { order: 'desc', shoe: { color: 'blue', type: 'converse' } }, [])
+      server.get('/', toRequestHandler(m))
+
+      return server.inject({ path: '/?order=desc&shoe[color]=blue&shoe[type]=converse' })
     })
 
-    it('should validate a query (failure case)', () => {
-      const Query = t.interface({
-        q: t.number,
-      })
-      const m = H.decodeQuery(Query.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({}, 'q=tobi+ferret'))
-      return assertFailure(m, c, (errors) => {
-        assert.deepStrictEqual(failure(errors), [
-          'Invalid value "tobi ferret" supplied to : { q: number }/q: number',
-        ])
-      })
+    it('should validate a query (failure case)', async () => {
+      const Query = t.type({ q: t.number })
+      const server = fastify()
+      const m = pipe(
+        H.decodeQuery(Query.decode),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+        H.orElse((errors) =>
+          pipe(
+            H.rightIO(() =>
+              assert.deepStrictEqual(failure(errors), [
+                'Invalid value "tobi ferret" supplied to : { q: number }/q: number',
+              ]),
+            ),
+            H.ichain(() => H.status(H.Status.BadRequest)),
+            H.ichain(() => H.closeHeaders()),
+            H.ichain(() => H.end()),
+          ),
+        ),
+      )
+      server.get('/', toRequestHandler(m))
+
+      const res = await server.inject({ path: '/?q=tobi ferret' })
+      assert.strictEqual(res.statusCode, 400)
+    })
+  })
+
+  describe('decodeMethod', () => {
+    const HttpMethod = t.keyof({
+      GET: null,
+      POST: null,
+    })
+
+    it('should validate the method (success case)', () => {
+      const server = fastify()
+      const m = pipe(
+        H.decodeMethod(HttpMethod.decode),
+        H.chain((method) => H.rightIO(() => assert.deepStrictEqual(method, 'GET'))),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.all('/', toRequestHandler(m))
+
+      return server.inject({ path: '/' })
+    })
+
+    it('should validate the method (failure case)', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.decodeMethod(HttpMethod.decode),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+        H.orElse((errors) =>
+          pipe(
+            H.rightIO(() =>
+              assert.deepStrictEqual(failure(errors), [
+                'Invalid value "PATCH" supplied to : "GET" | "POST"',
+              ]),
+            ),
+            H.ichain(() => H.status(H.Status.MethodNotAllowed)),
+            H.ichain(() => H.closeHeaders()),
+            H.ichain(() => H.end()),
+          ),
+        ),
+      )
+      server.all('/', toRequestHandler(m))
+
+      const res = await server.inject({ method: 'PATCH', path: '/' })
+      assert.strictEqual(res.statusCode, 405)
     })
   })
 
   describe('decodeBody', () => {
     it('should validate the body (success case)', () => {
-      const m = H.decodeBody(t.number.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({}, undefined, 1))
-      return assertSuccess(m, c, 1, [])
+      const Body = t.type({ x: t.number })
+      const server = fastify()
+      const m = pipe(
+        H.decodeBody(Body.decode),
+        H.chain((body) => H.rightIO(() => assert.deepStrictEqual(body, { x: 42 }))),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
+
+      return server.inject({ method: 'post', path: '/', payload: { x: 42 } })
     })
 
     it('should validate the body (failure case)', () => {
-      const m = H.decodeBody(t.number.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({}, undefined, 'a'))
-      return assertFailure(m, c, (errors) => {
-        assert.deepStrictEqual(failure(errors), ['Invalid value "a" supplied to : number'])
-      })
+      const Body = t.type({ x: t.number })
+      const server = fastify()
+      const m = pipe(
+        H.decodeBody(Body.decode),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+        H.orElse((errors) =>
+          pipe(
+            H.rightIO(() =>
+              assert.deepStrictEqual(failure(errors), ['Invalid value "a" supplied to : number']),
+            ),
+            H.ichain(() => H.status(H.Status.BadRequest)),
+            H.ichain(() => H.closeHeaders()),
+            H.ichain(() => H.end()),
+          ),
+        ),
+      )
+      server.get('/', toRequestHandler(m))
+
+      return server.inject({ method: 'post', path: '/', payload: { x: 42 } })
     })
   })
 
   describe('decodeHeader', () => {
     it('should validate a header (success case)', () => {
-      const m = H.decodeHeader('token', t.string.decode)
-      const c = new MockConnection<H.StatusOpen>(
-        new MockRequest({}, undefined, undefined, { token: 'mytoken' }),
+      const server = fastify()
+      const m = pipe(
+        H.decodeHeader('token', t.string.decode),
+        H.chain((header) => H.rightIO(() => assert.strictEqual(header, 'mytoken'))),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
       )
-      return assertSuccess(m, c, 'mytoken', [])
+      server.get('/', toRequestHandler(m))
+
+      return server.inject({ path: '/', headers: { token: 'mytoken' } })
     })
 
     it('should validate a header (failure case)', () => {
-      const m = H.decodeHeader('token', t.string.decode)
-      const c = new MockConnection<H.StatusOpen>(new MockRequest({}, undefined, undefined, {}))
-      return assertFailure(m, c, (errors) => {
-        assert.deepStrictEqual(failure(errors), ['Invalid value undefined supplied to : string'])
-      })
+      const server = fastify()
+      const m = pipe(
+        H.decodeHeader('token', t.string.decode),
+        H.ichain(() => H.status(H.Status.OK)),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+        H.orElse((errors) =>
+          pipe(
+            H.rightIO(() =>
+              assert.deepStrictEqual(failure(errors), [
+                'Invalid value undefined supplied to : string',
+              ]),
+            ),
+            H.ichain(() => H.status(H.Status.BadRequest)),
+            H.ichain(() => H.closeHeaders()),
+            H.ichain(() => H.end()),
+          ),
+        ),
+      )
+      server.get('/', toRequestHandler(m))
+
+      return server.inject({ path: '/' })
+    })
+  })
+
+  it('should handle the error', async () => {
+    const server = fastify()
+    const m = pipe(
+      H.left<H.StatusOpen, string, void>('error'),
+      H.ichain(() => H.status(H.Status.OK)),
+      H.ichain(() => H.closeHeaders()),
+      H.ichain(() => H.end()),
+    )
+    server.get('/', toRequestHandler(m))
+
+    const res = await server.inject({ path: '/' })
+    assert.strictEqual(res.statusCode, 500)
+  })
+
+  // describe('fromRequestHandler', () => {
+  //   const jsonMiddleware = fromRequestHandler(
+  //     bodyParser.json(),
+  //     () => E.right(undefined),
+  //     () => 'oops',
+  //   )
+
+  //   const Body = t.type({ name: t.string })
+  //   const bodyDecoder = pipe(
+  //     jsonMiddleware,
+  //     H.ichain(() =>
+  //       H.decodeBody(
+  //         flow(
+  //           Body.decode,
+  //           E.mapLeft(() => 'invalid body'),
+  //         ),
+  //       ),
+  //     ),
+  //   )
+
+  //   const helloHandler = pipe(
+  //     bodyDecoder,
+  //     H.ichain(({ name }) =>
+  //       pipe(
+  //         H.status<string>(H.Status.OK),
+  //         H.ichain(() => H.closeHeaders()),
+  //         H.ichain(() => H.send(`Hello ${name}!`)),
+  //       ),
+  //     ),
+  //     H.orElse((err) =>
+  //       pipe(
+  //         H.status(H.Status.BadRequest),
+  //         H.ichain(() => H.closeHeaders()),
+  //         H.ichain(() => H.send(err)),
+  //       ),
+  //     ),
+  //   )
+
+  //   const server = fastify()
+  //   server.get('/',toRequestHandler(helloHandler))
+
+  //   it('should return 200', () =>
+  //     supertest(server).post('/').send({ name: 'Ninkasi' }).expect(200, 'Hello Ninkasi!'))
+
+  //   it('should return 400', () => supertest(server).post('/').send({}).expect(400, 'invalid body'))
+  // })
+
+  describe('setHeader', () => {
+    it('should set a header', async () => {
+      const server = fastify()
+      const m = pipe(
+        H.status(H.Status.OK),
+        H.ichain(() => H.header('x-awesome-header', '42')),
+        H.ichain(() => H.closeHeaders()),
+        H.ichain(() => H.end()),
+      )
+      server.get('/', toRequestHandler(m))
+
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.headers['x-awesome-header'], '42')
     })
   })
 })

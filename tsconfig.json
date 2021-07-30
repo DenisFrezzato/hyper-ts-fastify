@@ -1,8 +1,5 @@
 {
   "compilerOptions": {
-    "outDir": "./dist",
-    "sourceMap": true,
-    "declaration": true,
     "target": "es5",
     "module": "commonjs",
     "moduleResolution": "node",
@@ -12,7 +9,15 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["es6", "dom"]
+    "esModuleInterop": true,
+    "lib": [
+      "es6",
+      "dom"
+    ]
   },
-  "include": ["./src/**/*", "./node_modules/fastify-cookie/plugin.d.ts"]
+  "include": [
+    "./src",
+    "./test",
+    "./node_modules/fastify-cookie/plugin.d.ts"
+  ]
 }
