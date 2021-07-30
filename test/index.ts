@@ -4,7 +4,7 @@ import { pipe } from 'fp-ts/function'
 import * as H from 'hyper-ts'
 import * as t from 'io-ts'
 import { failure } from 'io-ts/lib/PathReporter'
-import { toRequestHandler } from '../src'
+import { toRequestHandler, fromRequestHandler } from '../src'
 import fastify from 'fastify'
 
 describe('FastifyConnection', () => {
@@ -313,52 +313,44 @@ describe('FastifyConnection', () => {
     assert.strictEqual(res.statusCode, 500)
   })
 
-  // describe('fromRequestHandler', () => {
-  //   const jsonMiddleware = fromRequestHandler(
-  //     bodyParser.json(),
-  //     () => E.right(undefined),
-  //     () => 'oops',
-  //   )
+  describe('fromRequestHandler', () => {
+    const server = fastify()
+    const someMiddleware: H.Middleware<
+      H.StatusOpen,
+      H.StatusOpen,
+      string,
+      void
+    > = fromRequestHandler(server)(
+      (req) => {
+        ;(req as any).error = req.headers['error']
+      },
+      (req: any) => (req.error ? E.left('oops') : E.right(undefined)),
+      () => 'oops',
+    )
 
-  //   const Body = t.type({ name: t.string })
-  //   const bodyDecoder = pipe(
-  //     jsonMiddleware,
-  //     H.ichain(() =>
-  //       H.decodeBody(
-  //         flow(
-  //           Body.decode,
-  //           E.mapLeft(() => 'invalid body'),
-  //         ),
-  //       ),
-  //     ),
-  //   )
+    const someHandler = pipe(
+      someMiddleware,
+      H.ichain(() =>
+        pipe(
+          H.status<string>(H.Status.OK),
+          H.ichain(() => H.closeHeaders()),
+          H.ichain(() => H.end()),
+        ),
+      ),
+    )
 
-  //   const helloHandler = pipe(
-  //     bodyDecoder,
-  //     H.ichain(({ name }) =>
-  //       pipe(
-  //         H.status<string>(H.Status.OK),
-  //         H.ichain(() => H.closeHeaders()),
-  //         H.ichain(() => H.send(`Hello ${name}!`)),
-  //       ),
-  //     ),
-  //     H.orElse((err) =>
-  //       pipe(
-  //         H.status(H.Status.BadRequest),
-  //         H.ichain(() => H.closeHeaders()),
-  //         H.ichain(() => H.send(err)),
-  //       ),
-  //     ),
-  //   )
+    server.get('/', toRequestHandler(someHandler))
 
-  //   const server = fastify()
-  //   server.get('/',toRequestHandler(helloHandler))
+    it('should return 200', async () => {
+      const res = await server.inject({ path: '/' })
+      assert.strictEqual(res.statusCode, 200)
+    })
 
-  //   it('should return 200', () =>
-  //     supertest(server).post('/').send({ name: 'Ninkasi' }).expect(200, 'Hello Ninkasi!'))
-
-  //   it('should return 400', () => supertest(server).post('/').send({}).expect(400, 'invalid body'))
-  // })
+    it('should return 500', async () => {
+      const res = await server.inject({ path: '/', headers: { error: 'boom' } })
+      assert.strictEqual(res.statusCode, 500)
+    })
+  })
 
   describe('setHeader', () => {
     it('should set a header', async () => {

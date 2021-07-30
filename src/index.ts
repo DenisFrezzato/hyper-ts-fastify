@@ -2,9 +2,9 @@ import * as F from 'fastify'
 import * as LL from 'fp-ts-contrib/lib/List'
 import * as C from 'fp-ts/Console'
 import * as E from 'fp-ts/Either'
-import * as TE from 'fp-ts/TaskEither'
 import { IncomingMessage } from 'http'
 import * as H from 'hyper-ts'
+import { pipe, flow } from 'fp-ts/function'
 
 export type Action =
   | { type: 'setBody'; body: unknown }
@@ -142,9 +142,17 @@ export const fromRequestHandler = (fastifyInstance: F.FastifyInstance) => <
   A = never
 >(
   requestHandler: F.RouteHandler,
-  f: (req: F.FastifyRequest) => A,
-): H.Middleware<I, I, E, A> => (c) =>
-  TE.rightTask(() => {
-    const { req, reply: res } = c as FastifyConnection<I>
-    return Promise.resolve(requestHandler.call(fastifyInstance, req, res)).then(() => [f(req), c])
-  })
+  f: (req: F.FastifyRequest) => E.Either<E, A>,
+  onError: (reason: unknown) => E,
+): H.Middleware<I, I, E, A> => (c) => () => {
+  const { req, reply: res } = c as FastifyConnection<I>
+  return Promise.resolve(requestHandler.call(fastifyInstance, req, res))
+    .then(() =>
+      pipe(
+        req,
+        f,
+        E.map((a): [A, H.Connection<I>] => [a, c]),
+      ),
+    )
+    .catch(flow(onError, E.left))
+}
